@@ -48,3 +48,15 @@ po/*~
 
 # RStudio Connect folder
 rsconnect/
+.positai
+
+# Datos de investigación (nunca subir al repositorio)
+data/raw/
+data/processed/
+
+# Archivos de salida grandes
+output/
+
+# Archivos sensibles o de configuración local
+.Renviron
+*.credentials
