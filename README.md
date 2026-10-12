@@ -41,3 +41,5 @@ Este proyecto fue desarrollado con R Studio. Los paquetes requeridos son:
 
 ## Contacto
 Julián Camilo Velásquez Paz — [velasquezpjulian@javeriana.edu.co]
+
+Nota: Los datos sintéticos para las prácticas se encuentran referenciados en docs/fuentes_datos.md.
