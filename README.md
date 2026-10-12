@@ -1,45 +1,39 @@
-# SeminarioDeInvestigaci-nII
-
-# Impacto de Revistas Potencialmente Depredadoras en Metaanálisis de Anestesiología
+# Proyecto Analítico: Cohorte de Enfermedad Renal Crónica (ERC)
 
 ## Descripción
-Este es un estudio metaepidemiológico que tiene como objetivo describir las características de los ensayos clínicos aleatorizados (ECA) incluidos en el metaanálisis (MA) del desenlace primario de revisiones sistemáticas (RS) de las principales 10 revistas de Anestesiología entre 2021 y 2025. La investigación busca determinar cómo se modifica la estimación del efecto global y la robustez estadística del MA tras la exclusión sistemática de los ECA publicados en revistas potencialmente depredadoras. 
+Este repositorio contiene la estructura analítica reproducible para el análisis de una cohorte prospectiva de pacientes con Enfermedad Renal Crónica (ERC) en estadios G2 a G4. El proyecto hace parte de las actividades prácticas del Módulo 2 del Seminario de Epidemiología Clínica II. El objetivo principal es ejecutar procesos de importación, limpieza, análisis descriptivo y modelado de datos en un entorno controlado y reproducible.
 
 ## Fuentes de datos
-Los datos provienen de una búsqueda sistemática de RS con MA publicadas entre enero de 2021 y diciembre de 2025 en el top 10 de revistas de Anestesiología según el indicador SCImago Journal Rank (SJR) del año 2024. Se proyecta analizar una muestra de aproximadamente 198 RS y 2775 ECA primarios. Las principales variables disponibles incluyen el estatus de la revista fuente (evaluado mediante la herramienta JET), las estimaciones de efecto globales originales y recalculadas, la heterogeneidad estadística (I2), y las métricas de robustez como el Índice de Fragilidad (FI), el Índice de Fragilidad Inverso (FII) y el Cociente de Fragilidad (FQ).
+El análisis se fundamenta en la base de datos sintética `base_erc_cohorte.csv` proporcionada por el curso. Consiste en 300 participantes evaluados en tres puntos de medición (basal, mes 12 y mes 24) con un total de 47 variables clínicas, sociodemográficas y de laboratorio. El detalle completo del diseño y las variables se encuentra documentado en la carpeta `docs/`.
 
 ## Estructura del repositorio
-nombre-del-repositorio/
-├── README.md # Este archivo
-├── protocolo_metaepidemiologia.Rproj # Archivo de proyecto de RStudio
+cohorte-erc-analisis/
+├── README.md                     # Este archivo
+├── proyecto_analitico.Rproj      # Archivo de proyecto de RStudio
 ├── data/
-│   ├── raw/ # Datos originales (no incluidos en el repositorio)
-│   └── processed/ # Datos procesados (no incluidos en el repositorio)
+│   ├── raw/                      # Datos originales crudos (excluidos de Git)
+│   └── processed/                # Datos procesados limpios (excluidos de Git)
 ├── code/
-│   ├── 01_importacion.R # Importación y revisión inicial de datos
-│   ├── 02_limpieza.R # Limpieza y preparación de datos
-│   ├── 03_analisis_fragilidad.R # Cálculo de índices FI, FII y FQ
-│   ├── 04_analisis_sensibilidad.R # Recálculo de estimadores (Leave-one-out)
-│   └── 05_resultados.Rmd # Reporte reproducible de resultados
+│   ├── 01_importacion_revision.R # Script de importación y revisión inicial
+│   └── diccionario_variables.R   # Script generador del diccionario
 ├── output/
-│   ├── figures/ # Forest plots y gráficos generados por el código
-│   └── tables/ # Tablas generadas por el código
+│   ├── figures/                  # Figuras generadas por el código
+│   └── tables/                   # Tablas generadas por el código
 └── docs/
-    └── diccionario_variables.md # Diccionario de variables del proyecto
+    ├── diccionario_variables.csv # Diccionario detallado de las 47 variables
+    └── fuentes_datos.md          # Documentación detallada de la base sintética
 
 ## Requisitos
-Este proyecto fue desarrollado con R Studio. Los paquetes requeridos son:
-- `tidyverse` (para manipulación de datos)
-- `rmarkdown` (para reportes reproducibles)
-- `meta` o `metafor` (para la replicación del modelo estadístico, recálculo de OR/RR/MD y análisis de sensibilidad leave-one-out)
+Este proyecto fue desarrollado con R. Los paquetes requeridos para la ejecución del código son:
+- `tidyverse` (manipulación y visualización de datos)
+- `here` (gestión reproducible de rutas de directorios)
+- `skimr` (exploración rápida de estadísticas descriptivas)
 
 ## Cómo reproducir el análisis
-1. Clone este repositorio.
-2. Coloque los datos extraídos en la carpeta `data/raw/` (solicitar acceso al equipo de investigación).
-3. Abra el archivo `.Rproj` en RStudio.
-4. Ejecute los scripts en el orden indicado por su numeración.
+1. Clone este repositorio en su entorno local.
+2. Asegúrese de colocar el archivo `base_erc_cohorte.csv` en la ruta `data/raw/`.
+3. Abra el proyecto desde el archivo `.Rproj` en RStudio.
+4. Ejecute los scripts de la carpeta `code/` en orden numérico.
 
 ## Contacto
-Julián Camilo Velásquez Paz — [velasquezpjulian@javeriana.edu.co]
-
-Nota: Los datos sintéticos para las prácticas se encuentran referenciados en docs/fuentes_datos.md.
+Julián Camilo Velásquez Paz
