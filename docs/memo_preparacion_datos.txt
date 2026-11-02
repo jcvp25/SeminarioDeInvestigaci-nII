@@ -1,0 +1,47 @@
+MEMO: DECISIONES DE PREPARACIÓN DE DATOS
+Proyecto: Cohorte ERC — Seminario de Epiclínica II
+Fecha: Octubre 2026
+Autor: Julián Camilo Velásquez Paz
+
+═══════════════════════════════════════════════════
+1. CORRECCIÓN DE VALORES ATÍPICOS
+═══════════════════════════════════════════════════
+
+CREATININA BASAL (creatinina_mg_dl_basal):
+  ERC-0047: valor original 0.08 → valor corregido 0.84
+    Justificación: Error de punto decimal; el valor real es 0.84 mg/dL según log.
+  ERC-0271: valor original 142.0 → valor corregido 1.61
+    Justificación: Confusión de unidades (µmol/L → mg/dL). 142.0 / 88.4 = 1.61 mg/dL.
+  ERC-0183: valor original 18.5 → conservado
+    Justificación: Valor extremo pero posible en ERC G4 severa. Marcado para sensibilidad.
+
+PESO BASAL (peso_kg_basal):
+  ERC-0112: valor original 8.5 → NA_real_
+    Justificación: Imposible para un adulto, error de digitación irrecuperable.
+  ERC-0294: valor original 198.0 → conservado
+    Justificación: Posible caso de obesidad mórbida.
+
+═══════════════════════════════════════════════════
+2. VARIABLES DERIVADAS CREADAS
+═══════════════════════════════════════════════════
+  - grupo_edad: categorización de edad en 4 grupos
+  - estadio_agrupado: G2-G3a vs G3b-G4
+  - etiologia_agrupada: Diabética / Hipertensiva / Otras
+  - log_proteinuria_basal: log natural de proteinuria
+  - cambio_tfg_m12: diferencia TFG mes 12 - basal
+  - cambio_tfg_m24: diferencia TFG mes 24 - basal
+  - tasa_declive_tfg: declive anual de TFG (mL/min/año)
+  - anemia_basal: Hgb < 12 g/dL (mujeres) o < 13 g/dL (hombres)
+
+═══════════════════════════════════════════════════
+3. MANEJO DE DATOS FALTANTES
+═══════════════════════════════════════════════════
+  No se realizó imputación en la base analítica v1.0.
+  Los análisis de casos completos excluirán los faltantes según las variables de cada modelo específico.
+  Análisis de sensibilidad con imputación múltiple: pendiente.
+
+═══════════════════════════════════════════════════
+4. VARIABLES EXCLUIDAS
+═══════════════════════════════════════════════════
+  - imc_basal: reemplazado por imc_calculado
+  - discrepancia_imc: variable auxiliar de verificación
