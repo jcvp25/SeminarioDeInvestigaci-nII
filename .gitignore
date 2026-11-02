@@ -53,8 +53,6 @@ rsconnect/
 data/raw/
 data/processed/
 
-# Archivos de salida grandes
-output/
 
 # Archivos sensibles o de configuración local
 .Renviron
