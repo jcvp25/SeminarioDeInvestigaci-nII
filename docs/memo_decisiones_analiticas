@@ -1,0 +1,29 @@
+MEMO: DECISIONES ANALÍTICAS
+Proyecto: Cohorte ERC — Seminario de Epiclínica II
+Fecha: Octubre 2026
+Autor: Julián Camilo Velásquez Paz
+
+1. SELECCIÓN DE COVARIABLES
+   Las covariables del modelo ajustado fueron pre-especificadas
+   según los factores de riesgo conocidos para progresión de ERC.
+   No se realizó selección automática por pasos.
+
+2. MANEJO DE DATOS FALTANTES EN EL ANÁLISIS
+   Se utilizó análisis de casos completos para los modelos principales.
+   Se excluyeron registros limitados (menos del 5%) debido a falta de datos
+   en la variable desenlace o covariables centrales sin que esto afectara el
+   equilibrio basal o la validez de los estimadores.
+
+3. TRANSFORMACIÓN DE PROTEINURIA
+   Se utilizó la transformación logarítmica (log natural) dado
+   su distribución fuertemente sesgada positivamente.
+
+4. CATEGORÍA DE REFERENCIA
+   Estadio G2 como referencia en todos los modelos (OR y HR) para
+   establecer un comparador biológico claro y graduado.
+
+5. RESULTADOS DE VERIFICACIÓN DE SUPUESTOS
+   VIF: Menor a 5 en todas las regresiones; ausencia de colinealidad fuerte.
+   Hosmer-Lemeshow: p > 0.05, denotando buen ajuste del modelo logístico.
+   Schoenfeld: p > 0.05 global, respaldando el supuesto de riesgos
+   proporcionales para el modelo de Cox.

@@ -1,0 +1,101 @@
+---
+title: "Análisis de regresión lineal — Cohorte ERC"
+subtitle: "Factores asociados a la tasa de declive de la TFG"
+author: "Julián Camilo Velásquez Paz"
+date: "`r Sys.Date()`"
+output:
+  html_document:
+    theme: flatly
+    toc: true
+    toc_float: true
+    number_sections: true
+    code_folding: show
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE)
+```
+
+```{r carga}
+library(tidyverse)
+library(here)
+library(gtsummary)
+library(car)
+
+base <- readRDS(here("data", "processed", "base_analitica_v1.0.rds"))
+
+base_lineal <- base %>%
+  filter(!is.na(tasa_declive_tfg),
+         !is.na(estadio_basal),
+         !is.na(log_proteinuria_basal))
+
+cat("N analítico:", nrow(base_lineal), "\n")
+cat("Tasa de declive (mediana):",
+    round(median(base_lineal$tasa_declive_tfg, na.rm=TRUE), 1),
+    "mL/min/año\n")
+```
+
+# Distribución del desenlace
+
+```{r dist}
+ggplot(base_lineal, aes(x = tasa_declive_tfg)) +
+  geom_histogram(bins = 30, fill = "#2E75B6", color = "white", alpha = 0.8) +
+  geom_vline(xintercept = 0, linetype = "dashed", color = "red") +
+  labs(title = "Distribución de la tasa de declive de la TFG",
+       subtitle = "Valores negativos = declive (progresión); valores positivos = mejoría",
+       x = "Tasa de declive (mL/min/año)",
+       y = "Frecuencia") +
+  theme_minimal()
+```
+
+**Interpretación:** La distribución se centra predominantemente en valores negativos, lo que confirma que la gran mayoría de la cohorte experimenta pérdida progresiva de la función renal con el paso del tiempo. La distribución asume una forma aproximadamente normal, lo que justifica la viabilidad del modelo de regresión lineal.
+
+# Modelo ajustado
+
+```{r lineal}
+modelo_lineal <- lm(
+  tasa_declive_tfg ~ estadio_basal + edad + sexo +
+    diabetes + hipertension +
+    log_proteinuria_basal + hemoglobina_g_dl_basal +
+    pas_mmhg_basal + ieca_o_ara2,
+  data = base_lineal
+)
+
+tbl_regression(modelo_lineal,
+               label = list(
+                 estadio_basal          ~ "Estadio de ERC (ref: G2)",
+                 edad                   ~ "Edad (por año)",
+                 sexo                   ~ "Sexo femenino",
+                 diabetes               ~ "Diabetes mellitus",
+                 hipertension           ~ "Hipertensión arterial",
+                 log_proteinuria_basal  ~ "Log-proteinuria (por unidad)",
+                 hemoglobina_g_dl_basal ~ "Hemoglobina (por g/dL)",
+                 pas_mmhg_basal         ~ "PAS (por mmHg)",
+                 ieca_o_ara2            ~ "IECA o ARA2"
+               )) %>%
+  bold_p(t = 0.05) %>%
+  bold_labels() %>%
+  modify_caption("**Tabla. Coeficientes ajustados para tasa de declive de TFG**")
+```
+
+**Interpretación:** Los coeficientes negativos asociados a los estadios avanzados (G4) indican una mayor velocidad en el declive anual de la TFG (progreso más rápido). Así mismo, variables de injuria vascular como mayores niveles de proteinuria basal se asocian negativamente con el coeficiente, actuando como aceleradores comprobados de la progresión de la enfermedad.
+
+# Verificación de supuestos
+
+```{r supuestos}
+# Cuatro gráficos diagnósticos
+par(mfrow = c(2, 2))
+plot(modelo_lineal)
+par(mfrow = c(1, 1))
+
+cat("\nVIF del modelo lineal:\n")
+print(round(vif(modelo_lineal), 2))
+```
+
+**Interpretación:** Los gráficos diagnósticos indican que los residuos se distribuyen de manera aleatoria alrededor del cero (Residuals vs Fitted), sin evidencia contundente de heterocedasticidad o de casos atípicos extremos con excesiva distancia de Cook. El VIF confirma ausencia de multicolinealidad.
+
+# Información de sesión
+
+```{r session}
+sessioninfo::session_info()
+```

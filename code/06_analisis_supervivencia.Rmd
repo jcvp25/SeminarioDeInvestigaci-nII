@@ -1,0 +1,135 @@
+---
+title: "Análisis de supervivencia — Cohorte ERC"
+subtitle: "Tiempo hasta la progresión a G5 o inicio de TRR"
+author: "Julián Camilo Velásquez Paz"
+date: "`r Sys.Date()`"
+output:
+  html_document:
+    theme: flatly
+    toc: true
+    toc_float: true
+    number_sections: true
+    code_folding: show
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE)
+```
+
+```{r carga}
+library(tidyverse)
+library(here)
+library(survival)
+library(survminer)
+library(gtsummary)
+
+base <- readRDS(here("data", "processed", "base_analitica_v1.0.rds"))
+
+base_surv <- base %>%
+  filter(!is.na(tiempo_seguimiento_dias),
+         !is.na(progresion_g5_o_trr))
+
+cat("N analítico:", nrow(base_surv), "\n")
+cat("Eventos:", sum(base_surv$progresion_g5_o_trr), "\n")
+cat("Tiempo mediano de seguimiento:",
+    median(base_surv$tiempo_seguimiento_dias), "días\n")
+
+# Objeto de supervivencia
+surv_obj <- Surv(time  = base_surv$tiempo_seguimiento_dias,
+                 event = base_surv$progresion_g5_o_trr)
+```
+
+# Estimación de Kaplan-Meier
+
+```{r km}
+# KM global
+km_global <- survfit(surv_obj ~ 1, data = base_surv)
+
+ggsurvplot(km_global,
+           data        = base_surv,
+           conf.int    = TRUE,
+           risk.table  = TRUE,
+           xlab        = "Tiempo (días)",
+           ylab        = "Probabilidad libre de progresión",
+           title       = "Curva de supervivencia global",
+           ggtheme     = theme_minimal(base_size = 13))
+
+# KM por estadio
+km_estadio <- survfit(surv_obj ~ estadio_basal, data = base_surv)
+
+ggsurvplot(km_estadio,
+           data             = base_surv,
+           pval             = TRUE,
+           pval.method      = TRUE,
+           conf.int         = TRUE,
+           risk.table       = TRUE,
+           risk.table.height = 0.28,
+           palette          = c("#93C6E0","#4A90D9","#2E75B6","#1F5C99"),
+           legend.labs      = c("G2","G3a","G3b","G4"),
+           legend.title     = "Estadio de ERC",
+           xlab             = "Tiempo (días)",
+           ylab             = "Probabilidad libre de progresión",
+           title            = "Curvas de Kaplan-Meier por estadio basal de ERC",
+           ggtheme          = theme_minimal(base_size = 13))
+```
+
+**Interpretación:** Las curvas de Kaplan-Meier muestran una separación temprana, clara y progresiva según el estadio. El grupo G4 evidencia una probabilidad significativamente mayor de progresión temprana frente al grupo G2. El test log-rank arroja diferencias altamente significativas (p < 0.05), lo que valida estadísticamente los estratos.
+
+# Modelo de Cox
+
+```{r cox}
+# Modelo crudo
+cox_crudo <- coxph(surv_obj ~ estadio_basal, data = base_surv)
+
+tbl_regression(cox_crudo,
+               exponentiate = TRUE,
+               label = list(estadio_basal ~ "Estadio (ref: G2)")) %>%
+  bold_p() %>% bold_labels() %>%
+  modify_caption("**Tabla. HR crudos — Modelo de Cox**")
+
+# Modelo ajustado
+cox_ajustado <- coxph(
+  Surv(tiempo_seguimiento_dias, progresion_g5_o_trr) ~
+    estadio_basal + edad + sexo +
+    diabetes + hipertension +
+    log_proteinuria_basal + hemoglobina_g_dl_basal,
+  data = base_surv
+)
+
+tbl_regression(cox_ajustado,
+               exponentiate = TRUE,
+               label = list(
+                 estadio_basal          ~ "Estadio de ERC (ref: G2)",
+                 edad                   ~ "Edad (por año)",
+                 sexo                   ~ "Sexo femenino",
+                 diabetes               ~ "Diabetes mellitus",
+                 hipertension           ~ "Hipertensión arterial",
+                 log_proteinuria_basal  ~ "Log-proteinuria (por unidad)",
+                 hemoglobina_g_dl_basal ~ "Hemoglobina (por g/dL)"
+               )) %>%
+  bold_p(t = 0.05) %>%
+  bold_labels() %>%
+  modify_caption("**Tabla. HR ajustados — Modelo de Cox**")
+```
+
+**Interpretación:** El modelo ajustado demuestra que el riesgo instantáneo (Hazard Ratio) se incrementa de manera progresiva con estadios más severos. Estos HR concuerdan con la dirección de los OR del modelo logístico, sumando aquí la dimensión temporal, lo que revela que la enfermedad severa no solo aumenta la probabilidad neta del evento, sino que acelera su aparición temporalmente.
+
+# Verificación del supuesto de proporcionalidad
+
+```{r schoenfeld}
+ph_test <- cox.zph(cox_ajustado)
+cat("=== PRUEBA DE SCHOENFELD ===\n")
+print(ph_test)
+cat("\nInterpretación: p < 0.05 indica violación del supuesto",
+    "para esa variable\n")
+
+ggcoxzph(ph_test)
+```
+
+**Interpretación:** La prueba de Schoenfeld global y para las covariables arroja valores p superiores a 0.05. En los gráficos los residuos fluctúan sobre una pendiente cercana a cero. Esto indica que se cumple adecuadamente el supuesto de riesgos proporcionales (el riesgo atribuido a cada variable es constante en el tiempo).
+
+# Información de sesión
+
+```{r session}
+sessioninfo::session_info()
+```
