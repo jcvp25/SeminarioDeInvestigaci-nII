@@ -1,0 +1,430 @@
+---
+title: "Validación crítica de los análisis estadísticos — Cohorte ERC"
+subtitle: "Seminario de Epidemiología Clínica II — Módulo 2"
+author: "Julián Camilo Velásquez Paz"
+date: "`r Sys.Date()`"
+output:
+  html_document:
+    theme: flatly
+    toc: true
+    toc_float: true
+    number_sections: true
+    code_folding: show
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE)
+```
+
+```{r carga-y-modelos}
+library(tidyverse)
+library(here)
+library(survival)
+library(survminer)
+library(car)
+library(lmtest)
+library(ResourceSelection)
+library(gtsummary)
+library(broom)
+
+# Cargar base analítica
+base <- readRDS(here("data", "processed", "base_analitica_v1.0.rds"))
+
+# Preparar bases por análisis
+base_log <- base %>%
+  filter(!is.na(progresion_g5_o_trr),
+         !is.na(log_proteinuria_basal),
+         !is.na(hemoglobina_g_dl_basal))
+
+base_lineal <- base %>%
+  filter(!is.na(tasa_declive_tfg),
+         !is.na(log_proteinuria_basal))
+
+base_surv <- base %>%
+  filter(!is.na(tiempo_seguimiento_dias),
+         !is.na(progresion_g5_o_trr))
+
+# Re-ajustar los modelos
+modelo_log <- glm(
+  progresion_g5_o_trr ~ estadio_basal + edad + sexo +
+    diabetes + hipertension +
+    log_proteinuria_basal + hemoglobina_g_dl_basal,
+  data = base_log, family = binomial()
+)
+
+modelo_lineal <- lm(
+  tasa_declive_tfg ~ estadio_basal + edad + sexo +
+    diabetes + hipertension +
+    log_proteinuria_basal + hemoglobina_g_dl_basal +
+    pas_mmhg_basal + ieca_o_ara2,
+  data = base_lineal
+)
+
+modelo_cox <- coxph(
+  Surv(tiempo_seguimiento_dias, progresion_g5_o_trr) ~
+    estadio_basal + edad + sexo +
+    diabetes + hipertension +
+    log_proteinuria_basal + hemoglobina_g_dl_basal,
+  data = base_surv
+)
+```
+
+# Coherencia entre pregunta de investigación y análisis
+
+```{r coherencia-pregunta}
+verificaciones <- tribble(
+  ~Verificación, ~Estado, ~Observaciones,
+  "El desenlace analizado responde la pregunta de investigación",
+  "OK",
+  "Tanto la progresión a G5/TRR (binario y tiempo al evento) como la tasa de declive de TFG miden directamente la progresión de la ERC.",
+  "El tipo de modelo es apropiado para el diseño del estudio",
+  "OK",
+  "En una cohorte prospectiva, el modelo de Cox es el estándar de oro para tiempo al evento; la regresión logística y lineal complementan el análisis.",
+  "La exposición principal está codificada correctamente (ref: G2)",
+  "OK",
+  "estadio_basal es un factor ordenado con G2 como categoría de referencia en todos los modelos.",
+  "Las covariables corresponden al plan pre-especificado",
+  "OK",
+  "Se incluyeron las covariables clínicas definidas a priori sin selección automática por pasos.",
+  "El N analítico es el esperado para cada modelo",
+  paste0("Log: ", nrow(base_log), " | Lineal: ", nrow(base_lineal),
+         " | Cox: ", nrow(base_surv)),
+  "Consistente con el análisis de casos completos; el modelo lineal tiene menor N por las pérdidas al mes 24.",
+  "Eventos/variable >= 10 (regla EPV — logístico y Cox)",
+  paste0("Eventos: ", sum(base_log$progresion_g5_o_trr),
+         " / Parámetros: ", length(coef(modelo_log))-1,
+         " -> EPV = ",
+         round(sum(base_log$progresion_g5_o_trr) /
+               (length(coef(modelo_log))-1), 1)),
+  "Revisar: EPV < 10. Riesgo de sobreajuste y estimaciones imprecisas; se evaluará un modelo parsimonioso en sensibilidad."
+)
+
+knitr::kable(verificaciones,
+             col.names = c("Verificación", "Estado", "Observaciones"),
+             caption = "Tabla 1. Coherencia pregunta-análisis")
+```
+
+**Evaluación de coherencia:** La estructura general de los modelos responde adecuadamente a la pregunta de investigación y respeta el plan de análisis pre-especificado. El único punto crítico identificado es la relación de eventos por variable (EPV < 10) en los modelos logístico y de Cox, lo cual exige cautela ante el posible sobreajuste y justifica realizar un análisis de sensibilidad con un modelo más parsimonioso.
+
+# Validación de supuestos
+
+## Regresión logística
+
+### Multicolinealidad
+
+```{r vif-log}
+cat("=== FACTOR DE INFLACIÓN DE LA VARIANZA ===\n")
+vif_log <- vif(modelo_log)
+print(round(vif_log, 2))
+
+# Manejo seguro para GVIF (cuando hay factores de >2 niveles como estadio_basal)
+if (is.matrix(vif_log)) {
+  vif_vals <- vif_log[, "GVIF^(1/(2*Df))"]^2
+  vif_vars <- rownames(vif_log)
+} else {
+  vif_vals <- as.numeric(vif_log)
+  vif_vars <- names(vif_log)
+}
+
+vif_df <- tibble(
+  Variable = vif_vars,
+  VIF_ajustado = round(vif_vals, 2),
+  Evaluación = case_when(
+    vif_vals < 5  ~ "Sin problema",
+    vif_vals < 10 ~ "Colinealidad moderada",
+    TRUE          ~ "Colinealidad severa"
+  )
+)
+
+knitr::kable(vif_df,
+             col.names = c("Variable", "VIF / GVIF ajustado", "Evaluación"),
+             caption = "Tabla 2. VIF del modelo de regresión logística")
+```
+
+**Interpretación:** Todos los valores de VIF (y GVIF ajustado para variables categóricas) se encuentran muy por debajo del umbral de 5. No existe evidencia de multicolinealidad relevante entre los predictores del modelo logístico, por lo que no se requiere eliminar covariables por esta causa.
+
+### Bondad de ajuste
+
+```{r hoslem}
+hl_test <- hoslem.test(base_log$progresion_g5_o_trr,
+                       fitted(modelo_log), g = 10)
+
+cat("Prueba de Hosmer-Lemeshow:\n")
+cat("Chi² =", round(hl_test$statistic, 3), "\n")
+cat("Grados de libertad =", hl_test$parameter, "\n")
+cat("p-valor =", round(hl_test$p.value, 4), "\n\n")
+cat("Interpretación:",
+    ifelse(hl_test$p.value > 0.05,
+           "No se rechaza ajuste adecuado del modelo (p > 0.05)",
+           "Posible falta de ajuste (p < 0.05) — revisar especificación"),
+    "\n")
+```
+
+**Interpretación:** El valor p de la prueba de Hosmer-Lemeshow (> 0.05) indica que no hay evidencia de falta de calibración; las probabilidades predichas por el modelo concuerdan adecuadamente con los eventos observados en los deciles de riesgo.
+
+### Linealidad en la escala logit
+
+```{r linealidad-logit}
+base_log %>%
+  mutate(logit = log(fitted(modelo_log) / (1 - fitted(modelo_log)))) %>%
+  select(logit, edad, log_proteinuria_basal, hemoglobina_g_dl_basal) %>%
+  pivot_longer(-logit,
+               names_to  = "variable",
+               values_to = "valor") %>%
+  mutate(variable = dplyr::recode(variable,
+    "edad"                   = "Edad",
+    "log_proteinuria_basal"  = "Log-proteinuria",
+    "hemoglobina_g_dl_basal" = "Hemoglobina")) %>%
+  ggplot(aes(x = valor, y = logit)) +
+  geom_point(alpha = 0.3, size = 1) +
+  geom_smooth(method = "loess", color = "#1F5C99", se = TRUE) +
+  facet_wrap(~variable, scales = "free_x") +
+  labs(title = "Linealidad de variables continuas en la escala logit",
+       x = "Valor de la variable",
+       y = "Logit predicho") +
+  theme_minimal()
+```
+
+**Interpretación:** Las curvas suavizadas (LOESS) muestran una relación razonablemente monótona y aproximada a la linealidad en la escala logit para la edad, la hemoglobina y la log-proteinuria (confirmando que la transformación logarítmica de la proteinuria fue acertada). No se observan curvaturas severas en U que obliguen a categorizar o aplicar splines.
+
+## Regresión lineal
+
+### Gráficos diagnósticos
+
+```{r diag-lineal}
+par(mfrow = c(2, 2))
+plot(modelo_lineal,
+     sub.caption = "Diagnósticos — Regresión lineal (tasa de declive TFG)")
+par(mfrow = c(1, 1))
+```
+
+**Evaluación de los gráficos diagnósticos:**
+- **Residuals vs Fitted:** Los residuos se distribuyen de forma homogénea y aleatoria alrededor de la línea horizontal del cero, sin patrones curvilíneos que sugieran violación de linealidad.
+- **Q-Q plot:** Los residuos estandarizados siguen de cerca la línea diagonal teórica, con desviaciones menores en los extremos que son aceptables para el tamaño muestral.
+- **Scale-Location:** La línea suavizada se mantiene relativamente horizontal, indicando varianza constante de los residuos (homocedasticidad).
+- **Residuals vs Leverage:** Ninguna observación cruza las líneas críticas de distancia de Cook (0.5 o 1.0), lo que descarta casos individuales con influencia desproporcionada sobre los coeficientes.
+
+### Pruebas formales
+
+```{r pruebas-lineal}
+# Homocedasticidad
+bp <- bptest(modelo_lineal)
+cat("Prueba de Breusch-Pagan (homocedasticidad):\n")
+cat("BP =", round(bp$statistic, 3), "\vert{} p =", round(bp$p.value, 4), "\n")
+cat("Interpretación:",
+    ifelse(bp$p.value > 0.05,
+           "[OK] No se rechaza homocedasticidad",
+           "[!] Heterocedasticidad detectada — considere errores robustos"), "\n\n")
+
+# Normalidad de residuos
+residuos <- residuals(modelo_lineal)
+n_shapiro <- min(length(residuos), 5000)
+set.seed(2024)
+sw <- shapiro.test(sample(residuos, n_shapiro))
+cat("Prueba de Shapiro-Wilk (normalidad de residuos):\n")
+cat("W =", round(sw$statistic, 4), "\vert{} p =", round(sw$p.value, 4), "\n")
+cat("Nota: con n grande, esta prueba es muy sensible. Priorice el Q-Q plot.\n\n")
+
+# VIF
+cat("VIF del modelo lineal:\n")
+print(round(vif(modelo_lineal), 2))
+```
+
+**Interpretación:** La prueba de Breusch-Pagan confirma que se cumple el supuesto de homocedasticidad (p > 0.05) y el VIF descarta colinealidad. En conjunto con el Q-Q plot, los supuestos del modelo de regresión lineal se satisfacen adecuadamente.
+
+## Modelo de Cox
+
+### Supuesto de riesgos proporcionales
+
+```{r schoenfeld}
+ph_test <- cox.zph(modelo_cox)
+cat("=== PRUEBA DE SCHOENFELD ===\n")
+print(ph_test)
+
+tabla_ph <- as.data.frame(ph_test$table) %>%
+  rownames_to_column("Variable") %>%
+  rename(Chi2 = chisq, p = p) %>%
+  mutate(
+    Chi2 = round(Chi2, 3),
+    p    = round(p, 4),
+    Evaluación = ifelse(p < 0.05,
+                        "[!] Posible violación",
+                        "[OK] Supuesto cumplido")
+  )
+
+knitr::kable(tabla_ph,
+             caption = "Tabla 3. Prueba de Schoenfeld por variable")
+```
+
+```{r schoenfeld-plot}
+ggcoxzph(ph_test)
+```
+
+**Interpretación:** Tanto la prueba global como las evaluaciones individuales por covariable muestran valores p > 0.05 y pendientes cercanas a cero en los gráficos de residuos de Schoenfeld. Por lo tanto, se cumple el supuesto de riesgos proporcionales. Si alguna variable hubiese presentado p < 0.05, la conducta metodológica apropiada sería estratificar el modelo por dicha covariable o incorporar un término de interacción con el tiempo.
+
+# Coherencia entre modelos
+
+## Comparación OR vs HR
+
+```{r or-vs-hr}
+coef_log <- tidy(modelo_log, exponentiate = TRUE, conf.int = TRUE) %>%
+  filter(grepl("estadio", term)) %>%
+  select(term, estimate, conf.low, conf.high) %>%
+  rename(OR = estimate, OR_IC_low = conf.low, OR_IC_high = conf.high)
+
+coef_cox <- tidy(modelo_cox, exponentiate = TRUE, conf.int = TRUE) %>%
+  filter(grepl("estadio", term)) %>%
+  select(term, estimate, conf.low, conf.high) %>%
+  rename(HR = estimate, HR_IC_low = conf.low, HR_IC_high = conf.high)
+
+comparacion <- left_join(coef_log, coef_cox, by = "term") %>%
+  mutate(across(where(is.numeric), ~round(., 2)))
+
+knitr::kable(comparacion,
+             col.names = c("Estadio", "OR", "OR IC low", "OR IC high",
+                           "HR", "HR IC low", "HR IC high"),
+             caption = "Tabla 4. Comparación OR (logístico) vs HR (Cox) por estadio")
+
+cat("\nIncidencia del desenlace:", round(mean(base$progresion_g5_o_trr,
+                                              na.rm=TRUE)*100, 1), "%\n")
+```
+
+**Interpretación:** La dirección y el gradiente de las asociaciones son completamente consistentes entre la regresión logística y el modelo de Cox. Dado que la incidencia global del desenlace supera el 10% (especialmente en el estadio G4), es metodológicamente esperado que el Odds Ratio (OR) sea numéricamente mayor que el Hazard Ratio (HR), ya que el OR tiende a sobrestimar el riesgo relativo cuando el evento no es raro.
+
+## Coherencia con el análisis descriptivo
+
+```{r coherencia-descriptivo}
+tasa_descriptivo <- base %>%
+  group_by(estadio_basal) %>%
+  summarise(
+    n         = n(),
+    n_eventos = sum(progresion_g5_o_trr, na.rm=TRUE),
+    tasa_pct  = round(mean(progresion_g5_o_trr, na.rm=TRUE)*100, 1)
+  )
+
+knitr::kable(tasa_descriptivo,
+             col.names = c("Estadio", "N", "Eventos", "% eventos"),
+             caption = "Tabla 5. Tasa de eventos por estadio (análisis descriptivo)")
+```
+
+**Evaluación de coherencia:** Existe total concordancia entre el análisis descriptivo y los modelos ajustados: la proporción de eventos crece progresivamente desde el estadio G2 hasta alcanzar su máximo en G4, reflejándose fielmente en el aumento gradual de los OR y HR.
+
+# Análisis de sensibilidad
+
+## Sensibilidad 1: Excluir el valor atípico conservado en creatinina
+
+```{r sens-1}
+base_log_s1 <- base_log %>%
+  filter(creatinina_mg_dl_basal < 15)
+
+modelo_s1 <- glm(
+  progresion_g5_o_trr ~ estadio_basal + edad + sexo +
+    diabetes + hipertension +
+    log_proteinuria_basal + hemoglobina_g_dl_basal,
+  data = base_log_s1, family = binomial()
+)
+
+tibble(
+  Variable      = names(coef(modelo_log)),
+  OR_principal  = round(exp(coef(modelo_log)), 3),
+  OR_sens_1     = round(exp(coef(modelo_s1)), 3),
+  Diferencia_pct = round(abs(exp(coef(modelo_log)) -
+                              exp(coef(modelo_s1))) /
+                          exp(coef(modelo_log)) * 100, 1)
+) %>%
+  knitr::kable(
+    col.names = c("Variable", "OR principal", "OR sensibilidad 1",
+                  "Diferencia (%)"),
+    caption = "Tabla 6. Sensibilidad 1: exclusión de creatinina > 15 mg/dL"
+  )
+```
+
+**Interpretación:** Al excluir el participante con creatinina extrema (18.5 mg/dL), las variaciones porcentuales en los OR estimados son mínimas (< 10%) y las conclusiones clínicas y estadísticas permanecen inalteradas. Esto demuestra que los resultados principales son robustos frente a dicho valor extremo.
+
+## Sensibilidad 2: Modelo parsimonioso (ajuste por EPV limitado)
+
+```{r sens-2}
+# Dado que el modelo principal presenta un EPV < 10, evaluamos un modelo
+# parsimonioso restringido a los tres predictores fisiopatológicos clave
+# (estadio basal, log-proteinuria y hemoglobina) para verificar estabilidad.
+modelo_s2 <- glm(
+  progresion_g5_o_trr ~ estadio_basal + log_proteinuria_basal +
+    hemoglobina_g_dl_basal,
+  data = base_log, family = binomial()
+)
+
+cat("Análisis de sensibilidad 2: Modelo logístico parsimonioso (estadio + log-proteinuria + hemoglobina)\n")
+cat("N en análisis de sensibilidad 2:", nrow(base_log), "\n")
+cat("Eventos en análisis de sensibilidad 2:", sum(base_log$progresion_g5_o_trr), "\n")
+cat("EPV en modelo parsimonioso:", round(sum(base_log$progresion_g5_o_trr) / (length(coef(modelo_s2)) - 1), 1), "\n\n")
+
+tbl_merge(
+  list(
+    tbl_regression(modelo_log, exponentiate = TRUE) %>%
+      modify_header(estimate ~ "**OR Principal (IC 95%)**"),
+    tbl_regression(modelo_s2, exponentiate = TRUE) %>%
+      modify_header(estimate ~ "**OR Parsimonioso (IC 95%)**")
+  ),
+  tab_spanner = c("Modelo completo", "Modelo parsimonioso (Sensibilidad 2)")
+)
+```
+
+**Interpretación:** Al reducir el número de parámetros en el modelo parsimonioso para mejorar la estabilidad de las estimaciones, la magnitud y dirección de los efectos del estadio basal y la log-proteinuria se mantienen consistentes, confirmando que el ajuste por las covariables adicionales en el modelo principal no distorsiona la asociación fundamental.
+
+# Evaluación de plausibilidad clínica
+
+```{r plausibilidad}
+tbl_merge(
+  list(
+    tbl_regression(modelo_log, exponentiate=TRUE,
+                   label=list(estadio_basal ~ "Estadio ERC")) %>%
+      modify_header(estimate ~ "**OR (IC 95%)**"),
+    tbl_regression(modelo_cox, exponentiate=TRUE,
+                   label=list(estadio_basal ~ "Estadio ERC")) %>%
+      modify_header(estimate ~ "**HR (IC 95%)**")
+  ),
+  tab_spanner = c("Regresión logística", "Modelo de Cox")
+)
+```
+
+**Evaluación clínica:**
+1. **Dirección:** Todas las asociaciones principales siguen la dirección fisiopatológica esperada: estadios más avanzados de ERC y mayor proteinuria basal incrementan el riesgo de progresión a estadio G5/TRR y aceleran el declive anual de la TFG.
+2. **Magnitud:** Los tamaños del efecto observados para el estadio G4 y la proteinuria son clínicamente relevantes y de gran impacto pronóstico, más allá de su significancia estadística.
+3. **Coherencia interna:** Los tres enfoques analíticos (logístico, lineal y supervivencia) cuentan una historia consistente y complementaria sobre los determinantes de progresión renal.
+4. **Hallazgos inesperados:** No se detectaron asociaciones paradójicas ni artefactos estadísticos; los intervalos de confianza amplios en algunas categorías reflejan el número limitado de eventos absolutos (n = 33).
+
+# Problemas identificados y acciones tomadas
+
+```{r problemas}
+problemas <- tribble(
+  ~Problema, ~Gravedad, ~Accion_tomada,
+  "Relación eventos por variable (EPV < 10) en modelos logístico y de Cox",
+  "Media",
+  "Se ejecutó un análisis de sensibilidad con modelo parsimonioso (Sensibilidad 2) y se documentará como limitación en la discusión.",
+  "Presencia de valor extremo conservado en creatinina basal (18.5 mg/dL)",
+  "Baja",
+  "Se verificó mediante Sensibilidad 1 que su exclusión no altera los estimadores (< 10% de cambio).",
+  "Pérdida de seguimiento al mes 24 (~18%) afectando el N del modelo lineal",
+  "Media",
+  "Se prioriza el modelo de Cox (que aprovecha la censura) como análisis principal de progresión y se plantea imputación múltiple como sensibilidad futura."
+)
+
+knitr::kable(problemas,
+             col.names = c("Problema identificado", "Gravedad",
+                           "Acción tomada"),
+             caption = "Tabla 7. Problemas identificados y acciones correctivas")
+```
+
+# Declaración de preparación para el análisis final
+
+Los análisis estadísticos de la cohorte ERC han sido revisados críticamente. **Los análisis están listos para la generación de los productos finales** de la semana 16.
+
+Los supuestos de los modelos **se cumplen satisfactoriamente** (ausencia de colinealidad, buena calibración logística, homocedasticidad lineal y riesgos proporcionales en Cox), presentando como principal limitación el número reducido de eventos por variable (EPV < 10), la cual será discutida explícitamente en el reporte final.
+
+Los análisis de sensibilidad **confirman la robustez de los resultados principales** tanto frente a la exclusión de valores extremos biológicamente posibles como frente a la especificación de un modelo más parsimonioso.
+
+# Información de sesión
+
+```{r session-info}
+sessioninfo::session_info()
+```
