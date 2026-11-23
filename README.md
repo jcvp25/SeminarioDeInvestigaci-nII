@@ -37,3 +37,25 @@ Este proyecto fue desarrollado con R. Los paquetes requeridos para la ejecución
 
 ## Contacto
 Julián Camilo Velásquez Paz
+
+## Estado del proyecto
+
+**Versión actual:** v1.0 (análisis final)
+
+### Productos generados
+
+| Archivo | Descripción |
+|---------|-------------|
+| `code/08_reporte_final.html` | Reporte completo del análisis |
+| `output/tables/tabla_01_caracteristicas_basales.docx` | Características basales |
+| `output/tables/tabla_02_or_ajustados.docx` | OR ajustados (regresión logística) |
+| `output/tables/tabla_03_hr_ajustados.docx` | HR ajustados (modelo de Cox) |
+| `output/figures/figura_01_tfg_declive_estadio.png` | TFG y tasa de declive por estadio |
+| `output/figures/figura_02_kaplan_meier.png` | Curvas de Kaplan-Meier |
+
+### Cómo reproducir el análisis
+
+1. Clone el repositorio
+2. Coloque `base_erc_cohorte.csv` en `data/raw/`
+3. Ejecute los scripts en orden numérico (01 → 08)
+4. Los productos se generarán automáticamente en `output/`
